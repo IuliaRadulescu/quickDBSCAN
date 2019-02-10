@@ -41,6 +41,14 @@ class quickDBSCAN:
 					#insert into Mongo
 					self.mongoConnectInstance.upsertPixelValue("quickDBSCAN",{"object":pixel1.tolist()}, pixel2.tolist())
 
+	def nestedLoop2(self, eps, objs1, objs2):
+		for pixel1 in objs1:
+			for pixel2 in objs2:
+				if( (pixel1 == pixel2).all() == False and self.euclideanDist(pixel1, pixel2) <= eps):
+					print(pixel1, pixel2)
+					#insert into Mongo
+					self.mongoConnectInstance.upsertPixelValue("quickDBSCAN",{"object":pixel1.tolist()}, pixel2.tolist())
+
 
 	def randomObject(self, objs, pixel):
 		if(type(pixel) is not int):
@@ -109,9 +117,26 @@ class quickDBSCAN:
 		p2 = self.randomObject(objs, p1)
 		
 		(partL, partG, winL, winG) = self.partition(eps, objs, p1, p2)
+		self.quickJoinWin(winL, winG, eps, constSmallNumber)
 		self.quickJoin(partL, eps, constSmallNumber)
 		self.quickJoin(partG, eps, constSmallNumber)
-		
+
+	def quickJoinWin(self, objs1, objs2, eps, constSmallNumber):
+		totalLen = len(objs1) + len(objs2)
+		if(totalLen < constSmallNumber):
+			self.nestedLoop2(eps, objs1, objs2)
+			return;
+		allObjects = objs1 + objs2
+		p1 = self.randomObject(allObjects, -1)
+		p2 = self.randomObject(allObjects, p1)
+
+		(partL1, partG1, winL1, winG1) = self.partition(eps, objs1, p1, p2)
+		(partL2, partG2, winL2, winG2) = self.partition(eps, objs2, p1, p2)
+
+		self.quickJoinWin(winL1, winG2, eps, constSmallNumber)
+		self.quickJoinWin(winG1, winL2, eps, constSmallNumber)
+		self.quickJoinWin(partL1, partL2, eps, constSmallNumber)
+		self.quickJoinWin(partG1, partG2, eps, constSmallNumber)
 
 class quickDBSCANMongo(mongoConnect.MongoDBConnector):
 
@@ -127,8 +152,6 @@ class quickDBSCANMongo(mongoConnect.MongoDBConnector):
 
 		if(pixelRecord is not None):
 			pixelNeighs = pixelRecord["epsNeighs"]
-			print("pixelNeighs")
-			print(pixelNeighs)
 			alreadyExists = False
 			for pixelNeigh in pixelNeighs:
 				if(pixelNeigh==epsNeigh):
