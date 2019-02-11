@@ -27,3 +27,6 @@ class MongoDBConnector:
 
 	def getRecord(self, collection, filter={}, projection={}):
 		return self.db[collection].find_one(filter=filter, projection=projection)
+
+	def update(self, collection, filter={}, update={}, upsert=True):
+		self.db[collection].update(spec=filter, document=update, upsert=upsert)

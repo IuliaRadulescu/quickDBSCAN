@@ -24,7 +24,7 @@ class quickDBSCAN:
 		img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 		imgReshaped = np.reshape(img, (len(img)*len(img[0]), 3))
 		self.pixelList = list(np.unique(imgReshaped, axis=0))
-		self.mongoConnectInstance = quickDBSCANMongo("QuickDBScanDB");
+		self.mongoConnectInstance = mongoConnect.MongoDBConnector("QuickDBScanDB");
 		#print(self.pixelList)
 
 	
@@ -39,7 +39,7 @@ class quickDBSCAN:
 				if( (pixel1 == pixel2).all() == False and self.euclideanDist(pixel1, pixel2) <= eps):
 					print(pixel1, pixel2)
 					#insert into Mongo
-					self.mongoConnectInstance.upsertPixelValue("quickDBSCAN",{"object":pixel1.tolist()}, pixel2.tolist())
+					self.upsertPixelValue("quickDBSCAN",{"object":pixel1.tolist()}, pixel2.tolist())
 
 	def nestedLoop2(self, eps, objs1, objs2):
 		for pixel1 in objs1:
@@ -138,16 +138,10 @@ class quickDBSCAN:
 		self.quickJoinWin(partL1, partL2, eps, constSmallNumber)
 		self.quickJoinWin(partG1, partG2, eps, constSmallNumber)
 
-class quickDBSCANMongo(mongoConnect.MongoDBConnector):
-
-	def __init__(self, dbname, host='localhost', port=27017):
-		mongoConnect.MongoDBConnector.__init__(self, dbname, host='localhost', port=27017)
-
 	def upsertPixelValue(self, collection, filter, epsNeigh):
 		print(filter)
-		pixelRecord = self.getRecord("quickDBSCAN", filter, ["_id", "object", "epsNeighs"])
-		#print("pixelRecord-----------------------------------------")
-		#print(pixelRecord)
+		pixelRecord = self.mongoConnectInstance.getRecord("quickDBSCAN", filter, ["_id", "object", "epsNeighs"])
+		
 		newNeighs = {'epsNeighs':list()}
 
 		if(pixelRecord is not None):
@@ -162,9 +156,7 @@ class quickDBSCANMongo(mongoConnect.MongoDBConnector):
 		else:
 			newNeighs['epsNeighs'].append(epsNeigh)
 
-		self.db[collection].update(filter, {"$set":newNeighs}, upsert=True)
-
-
+		self.mongoConnectInstance.update("quickDBSCAN", filter, {"$set":newNeighs})
 
 
 if __name__ == '__main__':
