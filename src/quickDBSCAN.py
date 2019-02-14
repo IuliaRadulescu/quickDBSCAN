@@ -13,6 +13,7 @@ import cv2
 import sys
 import collections
 from random import randint
+from scipy.signal import argrelextrema
 import pymongo
 
 import mongoConnect
@@ -21,9 +22,13 @@ class QuickJOIN:
 	
 	def __init__(self, filePath):
 		img = cv2.imread(filePath, cv2.IMREAD_COLOR)
-		img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-		imgReshaped = np.reshape(img, (len(img)*len(img[0]), 3))
-		self.pixelList = list(np.unique(imgReshaped, axis=0))
+		#img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+
+		self.imageWidth = len(img[0])
+		self.imageHeight = len(img)
+		self.imgReshaped = np.reshape(img, (len(img)*len(img[0]), 3))
+
+		self.pixelList = list(np.unique(self.imgReshaped, axis=0))
 		self.mongoConnectInstance = mongoConnect.MongoDBConnector("QuickDBScanDB");
 		#print(self.pixelList)
 
@@ -32,8 +37,18 @@ class QuickJOIN:
 		#print(type(pixel1))
 		#print(type(pixel2))
 		return np.linalg.norm(pixel1-pixel2)
+
+	def distanceEps(self, eps, pixel1, pixel2):
+		
+		bterm = pow( (pixel1[0] - pixel2[0]), 2 )/pow( eps[0], 2 )
+		gterm = pow( (pixel1[1] - pixel2[1]), 2 )/pow( eps[1], 2 )
+		rterm = pow( (pixel1[2] - pixel2[2]), 2 )/pow( eps[2], 2 )
+
+		return bterm + gterm + rterm
+
 		
 	def nestedLoop(self, eps, objs):
+
 		for pixel1 in objs:
 			for pixel2 in objs:
 				if( (pixel1 == pixel2).all() == False and self.euclideanDist(pixel1, pixel2) <= eps):
@@ -42,8 +57,9 @@ class QuickJOIN:
 					self.upsertPixelValue("quickDBSCAN",{"object":pixel1.tolist()}, pixel2.tolist())
 					self.upsertPixelValue("quickDBSCAN",{"object":pixel2.tolist()}, pixel1.tolist())
 
+
 	def nestedLoop2(self, eps, objs1, objs2):
-		print("Nested loop 2")
+		
 		for pixel1 in objs1:
 			for pixel2 in objs2:
 				if( (pixel1 == pixel2).all() == False and self.euclideanDist(pixel1, pixel2) <= eps):
@@ -63,7 +79,7 @@ class QuickJOIN:
 
 		return objs[randomIndex]
 
-	def ball_average(self, objs, p1):
+	def ball_average(self, eps, objs, p1):
 		avgDistHelper = []
 		for pixel in objs:
 			if( (pixel==p1).all() == False ):
@@ -77,7 +93,8 @@ class QuickJOIN:
 		partG = []
 		winL = []
 		winG = []
-		r = self.ball_average(objs, p1)
+		
+		r = self.ball_average(eps, objs, p1)
 		startIdx = 0
 		endIdx = len(objs)-1
 		startDist = self.euclideanDist(objs[startIdx], p1)
@@ -117,10 +134,11 @@ class QuickJOIN:
 				endIdx = endIdx - 1
 				
 		return (objs[0:endIdx], objs[endIdx+1:len(objs)-1], winL, winG)
+
 	
 				
 		
-	def quickJoin(self, objs, eps, constSmallNumber):
+	def quickJoin(self, eps, objs, constSmallNumber):
 		if(len(objs) < constSmallNumber):
 			self.nestedLoop(eps, objs)
 			return;
@@ -129,11 +147,11 @@ class QuickJOIN:
 		p2 = self.randomObject(objs, p1)
 		
 		(partL, partG, winL, winG) = self.partition(eps, objs, p1, p2)
-		self.quickJoinWin(winL, winG, eps, constSmallNumber)
-		self.quickJoin(partL, eps, constSmallNumber)
-		self.quickJoin(partG, eps, constSmallNumber)
+		self.quickJoinWin(eps, winL, winG, constSmallNumber)
+		self.quickJoin(eps, partL, constSmallNumber)
+		self.quickJoin(eps, partG, constSmallNumber)
 
-	def quickJoinWin(self, objs1, objs2, eps, constSmallNumber):
+	def quickJoinWin(self, eps, objs1, objs2, constSmallNumber):
 		print("Intra in win")
 		totalLen = len(objs1) + len(objs2)
 		if(totalLen < constSmallNumber):
@@ -146,10 +164,10 @@ class QuickJOIN:
 		(partL1, partG1, winL1, winG1) = self.partition(eps, objs1, p1, p2)
 		(partL2, partG2, winL2, winG2) = self.partition(eps, objs2, p1, p2)
 
-		self.quickJoinWin(winL1, winG2, eps, constSmallNumber)
-		self.quickJoinWin(winG1, winL2, eps, constSmallNumber)
-		self.quickJoinWin(partL1, partL2, eps, constSmallNumber)
-		self.quickJoinWin(partG1, partG2, eps, constSmallNumber)
+		self.quickJoinWin(eps, winL1, winG2, constSmallNumber)
+		self.quickJoinWin(eps, winG1, winL2, constSmallNumber)
+		self.quickJoinWin(eps, partL1, partL2, constSmallNumber)
+		self.quickJoinWin(eps, partG1, partG2, constSmallNumber)
 
 	def upsertPixelValue(self, collection, filter, epsNeigh):
 		#print(filter)
@@ -173,8 +191,7 @@ class QuickJOIN:
 			
 
 class DBSCAN:
-	def __init__(self, eps, minPts):
-		self.eps = eps
+	def __init__(self, minPts):
 		self.minPts = minPts
 		self.label = 0
 		self.pixelLabels = collections.defaultdict(list);
@@ -191,9 +208,9 @@ class DBSCAN:
 	def dbscan(self, objs):
 		for pixel in objs:
 			if(self.checkIfPixelInList(pixel, self.visitedPixels) == False):
+				self.visitedPixels.append(pixel)
 				pixelRecord = self.mongoConnectInstance.getRecord("quickDBSCAN", {'object':pixel.tolist()}, ["_id", "object", "epsNeighs"])
 				if(pixelRecord is not None):
-					self.visitedPixels.append(pixel);
 					spherePoints = pixelRecord["epsNeighs"]
 					spherePoints = [np.asarray(tuple(p)) for p in spherePoints]
 					#print(spherePoints)
@@ -225,15 +242,76 @@ class DBSCAN:
 		return
 
 
+def random_color():
+	b = randint(0, 255)
+	g = randint(0, 255)
+	r = randint(0, 255)
+	return [b, g, r]
+
+def saveClusteredImage(labelDict, imagePixels, imageWidth, imageHeight):
+
+	colorDict = collections.defaultdict(list);
+
+	for pixelLabel in set(labelDict.values()):
+		colorDict[pixelLabel] = random_color();
+
+	for pixelId in range(len(imagePixels)):
+		pixelToChange = tuple(imagePixels[pixelId])
+		print(pixelToChange)
+		if(labelDict[pixelToChange] == []):
+			color = [0, 0, 0]
+		else:
+			color = colorDict[labelDict[pixelToChange]]
+		imagePixels[pixelId][0] = color[0]
+		imagePixels[pixelId][1] = color[1]
+		imagePixels[pixelId][2] = color[2]
+	final_image = np.reshape(imagePixels, (imageHeight, imageWidth, 3))
+
+	cv2.imwrite('/home/iulia/CSCS/img/result.jpg', final_image)
+
+def computeMinPts(imageWidth, imageHeight, percent):
+	return int((imageWidth*imageHeight*percent)/255)
+
+
+def computeEps(filePath):
+	img = cv2.imread(filePath, cv2.IMREAD_COLOR)
+
+	histB = cv2.calcHist([img],[0],None,[256],[0,256])
+	localMinB = argrelextrema(histB, np.less)
+	localDiffB = np.diff(localMinB[0])
+	bRadius = sum(localDiffB)/len(localDiffB)
+
+	histG = cv2.calcHist([img],[1],None,[256],[0,256])
+	localMinG = argrelextrema(histG, np.less)
+	localDiffG = np.diff(localMinG[0])
+	gRadius = sum(localDiffG)/len(localDiffG)
+
+	histR = cv2.calcHist([img],[1],None,[256],[0,256])
+	localMinR = argrelextrema(histR, np.less)
+	localDiffR = np.diff(localMinR[0])
+	rRadius = sum(localDiffR)/len(localDiffR)
+
+	scaled = np.linalg.norm(np.array([bRadius, gRadius, rRadius]) - np.zeros(3)) 
+
+	return scaled
+
+
+
+
 if __name__ == '__main__':
 
 	filePath = sys.argv[1]
 		
 	quickJoinInstance = QuickJOIN(filePath)
-	'''quickJoinInstance.quickJoin(quickJoinInstance.pixelList, 10, 100)
-	quickJoinInstance.mongoConnectInstance.closeConection()'''
-	dbscanInstance = DBSCAN(10, 7)
+
+	eps = computeEps(filePath)
+	minPts = computeMinPts(quickJoinInstance.imageWidth, quickJoinInstance.imageHeight, 0.5)
+
+	quickJoinInstance.quickJoin(eps, quickJoinInstance.pixelList, 200)
+	quickJoinInstance.mongoConnectInstance.closeConection()
+	dbscanInstance = DBSCAN(5)
 	labelDict = dbscanInstance.dbscan(quickJoinInstance.pixelList)
 	print(len(labelDict))
 	print(set(labelDict.values()))
+	saveClusteredImage(labelDict, quickJoinInstance.imgReshaped, quickJoinInstance.imageWidth, quickJoinInstance.imageHeight)
 
