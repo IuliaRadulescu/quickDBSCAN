@@ -43,7 +43,7 @@ class QuickJOIN:
 		for pixel1 in objs:
 			for pixel2 in objs:
 				if(pixel1 != pixel2 and self.euclideanDistPosition(pixel1, pixel2) <= eps):
-					print(pixel1, pixel2)
+					#print(pixel1, pixel2)
 					#insert into Mongo
 					self.upsertPixelValue("quickDBSCAN",{"object":[pixel1[0], pixel1[1], pixel1[2].tolist()]}, [pixel2[0], pixel2[1], pixel2[2].tolist()])
 					self.upsertPixelValue("quickDBSCAN",{"object":[pixel2[0], pixel2[1], pixel2[2].tolist()]}, [pixel1[0], pixel1[1], pixel1[2].tolist()])
@@ -55,7 +55,7 @@ class QuickJOIN:
 			for pixel2 in objs2:
 				if( pixel1 != pixel2 and self.euclideanDistPosition(pixel1, pixel2) <= eps):
 					print("Adauga")
-					print(pixel1, pixel2)
+					#print(pixel1, pixel2)
 					#insert into Mongo
 					self.upsertPixelValue("quickDBSCAN",{"object":[pixel1[0], pixel1[1], pixel1[2].tolist()]}, [pixel2[0], pixel2[1], pixel2[2].tolist()])
 					self.upsertPixelValue("quickDBSCAN",{"object":[pixel2[0], pixel2[1], pixel2[2].tolist()]}, [pixel1[0], pixel1[1], pixel1[2].tolist()])
@@ -158,7 +158,7 @@ class QuickJOIN:
 		self.quickJoinWin(eps, partL1, partL2, constSmallNumber)
 		self.quickJoinWin(eps, partG1, partG2, constSmallNumber)
 
-	def upsertPixelValue(self, collection, filter, epsNeigh):
+	'''def upsertPixelValue(self, collection, filter, epsNeigh):
 		#print(filter)
 		pixelRecord = self.mongoConnectInstance.getRecord("quickDBSCAN", filter, ["_id", "object", "epsNeighs"])
 		
@@ -176,7 +176,11 @@ class QuickJOIN:
 		else:
 			newNeighs['epsNeighs'].append(epsNeigh)
 
-		self.mongoConnectInstance.update("quickDBSCAN", filter, {"$set":newNeighs})
+		self.mongoConnectInstance.update("quickDBSCAN", filter, {"$set":newNeighs})'''
+
+	def upsertPixelValue(self, collection, filter, epsNeigh):
+
+		self.mongoConnectInstance.update("quickDBSCAN", filter, {"$push":{"epsNeighs":epsNeigh}})
 			
 
 class DBSCAN:
@@ -190,25 +194,25 @@ class DBSCAN:
 
 	def checkIfPixelInList(self, pixel, objList):
 		for pixelList in objList:
-			if( (pixel==pixelList).all() == True ):
+			if(pixel==pixelList):
 				return True
 		return False
 
 
 	def dbscan(self, objs):
 		for pixel in objs:
+			pixel[2] = pixel[2].tolist()
 			if(self.checkIfPixelInList(pixel, self.visitedPixels) == False):
 				self.visitedPixels.append(pixel)
-				pixelRecord = self.mongoConnectInstance.getRecord("quickDBSCAN", {'object':pixel.tolist()}, ["_id", "object", "epsNeighs"])
+				pixelRecord = self.mongoConnectInstance.getRecord("quickDBSCAN", {'object':[pixel[0], pixel[1], pixel[2]]}, ["_id", "object", "epsNeighs"])
 				if(pixelRecord is not None):
 					spherePoints = pixelRecord["epsNeighs"]
-					spherePoints = [np.asarray(tuple(p)) for p in spherePoints]
 					#print(spherePoints)
 					#print("len Sphere "+str(len(spherePoints)))
-					if(computeColorMinPts(spherePoints) >= self.minPts):
+					if(self.computeColorMinPts(spherePoints) >= self.minPts):
 						self.label = self.label + 1
 						print("Cluster "+str(self.label))
-						self.pixelLabels[tuple(pixel)] = self.label
+						self.pixelLabels[self.label].append(pixel)
 						self.expandCluster(spherePoints)
 		return self.pixelLabels
 
@@ -220,14 +224,15 @@ class DBSCAN:
 			if(self.checkIfPixelInList(pixel, self.visitedPixels) == False):
 				print("Trece de check")
 				self.visitedPixels.append(pixel)
-				self.pixelLabels[tuple(pixel)] = self.label
-				pixelRecord = self.mongoConnectInstance.getRecord("quickDBSCAN", {'object':pixel.tolist()}, ["_id", "object", "epsNeighs"])
+				self.pixelLabels[self.label].append(pixel)
+				pixelRecord = self.mongoConnectInstance.getRecord("quickDBSCAN", {'object':[pixel[0], pixel[1], pixel[2]]}, ["_id", "object", "epsNeighs"])
 				if(pixelRecord is not None):
 					print("Intra")
 					spherePointsNeighs = pixelRecord["epsNeighs"]
-					spherePointsNeighs = [np.asarray(tuple(p)) for p in spherePointsNeighs]
 					print("len Sphere vecini "+str(len(spherePointsNeighs)))
-					if(computeColorMinPts(spherePointsNeighs) >= self.minPts):
+					minPtsComp = self.computeColorMinPts(spherePointsNeighs)
+					if(minPtsComp >= self.minPts):
+						print("Este mai mare expand "+str(minPtsComp))
 						self.expandCluster(spherePointsNeighs)
 		return
 
@@ -260,16 +265,17 @@ class DBSCAN:
 		return bterm + gterm + rterm
 
 	def computeColorMinPts(self, objs):
-		minPts = 0;
+		minPts = [];
 		eps = self.computeColorEps()
-		for pixel1 in obsj:
-			for pixel2 in objs:
-				rgb1 = pixel1[2]
-				rgb2 = pixel2[2]
-				if( (rgb1==rgb2).all() == False ):
-					if(distanceEps(eps) <= 1):
-						minPts = minPts + 1
-		return minPts
+		for pixelId1 in range(len(objs)):
+			for pixelId2 in range(pixelId1+1, len(objs)):
+				rgb1 = objs[pixelId1][2]
+				rgb2 = objs[pixelId2][2]
+				if(rgb1!=rgb2):
+					if(self.distanceEps(eps, rgb1, rgb2) <= 1):
+						minPts.append(tuple(rgb1))
+						minPts.append(tuple(rgb2))
+		return len(set(minPts))
 
 
 
@@ -279,20 +285,33 @@ def random_color():
 	r = randint(0, 255)
 	return [b, g, r]
 
-def saveClusteredImage(labelDict, imagePixels, imageWidth, imageHeight):
+def getLabelByKey(dict, searchValue):
+	for theKey, theValue in dictionary.items():
+    	if theValue == searchValue:
+        	return theKey
+    return -1
+
+def saveClusteredImage(labelDict, filePath, imageWidth, imageHeight):
+
+	print("Save clustered Image")
+	img = cv2.imread(filePath, cv2.IMREAD_COLOR)
+	imageWidth = len(img[0])
+	imageHeight = len(img)
+	imagePixels = np.reshape(img, (imageWidth*imageHeight, 3))
 
 	colorDict = collections.defaultdict(list);
 
-	for pixelLabel in set(labelDict.values()):
+	for pixelLabel in set(labelDict.keys()):
 		colorDict[pixelLabel] = random_color();
 
 	for pixelId in range(len(imagePixels)):
-		pixelToChange = tuple(imagePixels[pixelId])
-		print(pixelToChange)
-		if(labelDict[pixelToChange] == []):
+		pixelToChange = imagePixels[pixelId].tolist()
+		pixelLabel = getLabelByKey(labelDict, pixelToChange)
+
+		if(pixelLabel == -1):
 			color = [0, 0, 0]
 		else:
-			color = colorDict[labelDict[pixelToChange]]
+			color = colorDict[pixelLabel]
 		imagePixels[pixelId][0] = color[0]
 		imagePixels[pixelId][1] = color[1]
 		imagePixels[pixelId][2] = color[2]
@@ -304,16 +323,17 @@ def saveClusteredImage(labelDict, imagePixels, imageWidth, imageHeight):
 
 if __name__ == '__main__':
 
+	sys.setrecursionlimit(15000)
+
 	filePath = sys.argv[1]
 		
 	quickJoinInstance = QuickJOIN(filePath)
 
-
-	quickJoinInstance.quickJoin(20, quickJoinInstance.pixelList, 200)
-	quickJoinInstance.mongoConnectInstance.closeConection()
-	dbscanInstance = DBSCAN(20, 5)
+	#quickJoinInstance.quickJoin(5, quickJoinInstance.pixelList, 500)
+	#quickJoinInstance.mongoConnectInstance.closeConection()
+	dbscanInstance = DBSCAN(5, 40, filePath)
 	labelDict = dbscanInstance.dbscan(quickJoinInstance.pixelList)
 	print(len(labelDict))
-	print(set(labelDict.values()))
-	saveClusteredImage(labelDict, quickJoinInstance.imgReshaped, quickJoinInstance.imageWidth, quickJoinInstance.imageHeight)
+	print(set(labelDict.keys()))
+	saveClusteredImage(labelDict, filePath, quickJoinInstance.imageWidth, quickJoinInstance.imageHeight)
 
