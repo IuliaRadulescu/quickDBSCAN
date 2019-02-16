@@ -285,13 +285,14 @@ def random_color():
 	r = randint(0, 255)
 	return [b, g, r]
 
-def getLabelByKey(dict, searchValue):
+def getLabelByKey(dictionary, searchValue):
 	for theKey, theValue in dictionary.items():
-		if(theValue == searchValue):
+		if(searchValue in theValue):
+			#print("Am gasit cheia")
 			return theKey
 	return -1
 
-def saveClusteredImage(labelDict, filePath, imageWidth, imageHeight):
+def saveClusteredImage(labelDict, filePath):
 
 	print("Save clustered Image")
 	img = cv2.imread(filePath, cv2.IMREAD_COLOR)
@@ -306,8 +307,9 @@ def saveClusteredImage(labelDict, filePath, imageWidth, imageHeight):
 
 	for pixelId in range(len(imagePixels)):
 		pixelToChange = imagePixels[pixelId].tolist()
+		#print("pixelToChange "+str(pixelToChange))
 		pixelLabel = getLabelByKey(labelDict, pixelToChange)
-
+		#print("pixelLabel "+str(pixelLabel))
 		if(pixelLabel == -1):
 			color = [0, 0, 0]
 		else:
@@ -335,5 +337,7 @@ if __name__ == '__main__':
 	labelDict = dbscanInstance.dbscan(quickJoinInstance.pixelList)
 	print(len(labelDict))
 	print(set(labelDict.keys()))
-	saveClusteredImage(labelDict, filePath, quickJoinInstance.imageWidth, quickJoinInstance.imageHeight)
+	print("LABEL DICT------------------------------")
+	print(labelDict)
+	saveClusteredImage(labelDict, filePath)
 
