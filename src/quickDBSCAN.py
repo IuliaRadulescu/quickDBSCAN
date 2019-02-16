@@ -287,9 +287,9 @@ def random_color():
 
 def getLabelByKey(dict, searchValue):
 	for theKey, theValue in dictionary.items():
-    	if theValue == searchValue:
-        	return theKey
-    return -1
+		if(theValue == searchValue):
+			return theKey
+	return -1
 
 def saveClusteredImage(labelDict, filePath, imageWidth, imageHeight):
 
